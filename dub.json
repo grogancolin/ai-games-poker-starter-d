@@ -1,0 +1,8 @@
+{
+	"name": "ai-games-poker-starter-d",
+	"description": "A minimal D application.",
+	"copyright": "Copyright © 2015, Colin",
+	"authors": ["Colin"],
+	"dependencies": {
+	}
+}

@@ -6,6 +6,7 @@ import std.stdio;
 import std.string;
 import std.range : array;
 
+import poker;
 /**
   * Compile wiht dmd starterBot.d -version=SampleMain
   * to include this main function.
