@@ -13,7 +13,8 @@ public enum Suit{
 	Club,
 	Diamond,
 	Heart,
-	Spade
+	Spade,
+	DONT_CARE
 }
 public enum Rank{
 	Ace,
@@ -28,7 +29,8 @@ public enum Rank{
 	Five,
 	Four,
 	Three,
-	Two
+	Two,
+	DONT_CARE
 }
 
 /*
@@ -40,6 +42,16 @@ public struct Card{
 
 	string toString(){
 		return this.cardName;
+	}
+
+	bool compare(Card other){
+		if( ( this.rank == other.rank || this.rank == Rank.DONT_CARE || other.rank == Rank.DONT_CARE ) 
+			&& 
+			(this.suit == other.suit || this.suit == Suit.DONT_CARE || other.suit == Suit.DONT_CARE)
+		  ) // then
+			return true;
+		else
+			return false;
 	}
 }
 
@@ -59,15 +71,14 @@ public struct Hand{
 
 	/**
 	  * Compares this hand with another
+	  * Both hands must be in DESCENDING ORDER
 	  */
 	public bool compare(Hand other){
-		bool val = true;
-		foreach(card; this.cards){
-			if(!other.cards.canFind(card))
-				val = false;
+		for(int i=0; i<min(this.cards.length, other.cards.length); i++){
+			if(!this.cards[i].compare(other.cards[i]))
+				return false;
 		}
-
-		return val;
+		return true;
 	}
 }
 
@@ -80,7 +91,11 @@ public enum ValidPokerHands : Hand[]{
 	TwoPairs = genTwoPairs,
 	ThreeOfAKinds = genThreeOfAKinds,
 	Straights = genStraights,
-	FourOfAKinds = genFourOfAKinds
+	Flushes = genFlushes,
+	FullHouses = genFullHouses,
+	FourOfAKinds = genFourOfAKinds,
+	StraightFlushes = genStraightFlushes,
+	RoyalFlushes = genRoyalFlushes
 }
 
 Hand[] genHighCards(){
@@ -127,35 +142,67 @@ Hand[] genThreeOfAKinds(){
 
 Hand[] genStraights(){
 	Rank[] ranks = mixin("["~ allRanks.map!(a => "Rank."~a).join(",") ~ "]");
-	Suit[] suits = mixin("["~ allSuits.map!(a => "Suit."~a).join(",") ~ "]");
 	// straights are special, as Aces count for 1 and 13, so,
 	// add another Ace rank onto the end of ranks
 	ranks ~= Rank.Ace;
 	Rank[][] straightRanks;
-	for(int i=0; i < ranks.length-5; i++ ){
+	for(int i=0; i < ranks.length-4; i++ ){
 		straightRanks ~= ranks[i..i+5];
 	}
 	// get all possible combinations of suits
+	Hand[] hands;
+	foreach(r; straightRanks)
+		hands ~= Hand(r.map!(a => Card(Suit.DONT_CARE, a)).array);
+	return hands;
+}
 
-	auto suitsComb_4 = suits.combinations(4);
-	pragma(msg, typeof(suitsComb_4.front));
-	Suit[][] suitCombs;
-	foreach(suit; suits)
-	foreach(comb; suitsComb_4){
-		suitCombs ~= comb ~ suit;
-	}
-
+/+
+Hand[] genFlushes(){
+	Suit[] suits = mixin("["~ allSuits.map!(a => "Suit."~a).join(",") ~ "]");
 
 	Hand[] hands;
-	foreach(suitComb; suitCombs){
-		foreach(straightRank; straightRanks){
-			Hand h;
-			foreach(rank; straightRank){
-				foreach(suit; suitComb){
-					h.cards ~= Card(suit, rank);
-				}
-			}
-			hands ~= h;
+	foreach(suit; suits){
+		// create a hand with five cards, all of which have suits = suit
+		Hand h;
+		iota(0,5,1).each!(a => h.cards ~= Card(suit, Rank.DONT_CARE));
+	}
+	return hands;
+}
++/
+Hand[] genFlushes(){
+	Suit[] suits = mixin("["~ allSuits.map!(a => "Suit."~a).join(",") ~ "]");
+	
+	Hand[] hands;
+	Hand[] genericFlushes;
+	foreach(suit; suits){
+		// create a hand with five cards, all of which have suits = suit
+		Card[5] cards;
+		cards.each!(a => a=Card(suit, Rank.DONT_CARE));
+		genericFlushes ~= Hand(cards);
+	}
+
+	Hand h;
+	foreach(combination; AllCombinationsOfCards){
+		Suit s = combination[0].suit;
+		if(combination.any!(a => a.suit != s))
+			continue;
+		h = Hand(combination);
+		foreach(flush; genericFlushes)
+			if(h.compare(flush))
+				hands ~= h;
+	}
+	return hands;
+}
+Hand[] genFullHouses(){
+	// get all pairs
+	Hand[] pairs = ValidPokerHands.Pairs;
+	Hand[] threes = ValidPokerHands.ThreeOfAKinds;
+
+	Hand[] hands;
+	foreach(pair; pairs){
+		foreach(three; threes){
+			if(pair.cards[0].rank != three.cards[0].rank)
+				hands ~= Hand(pair.cards ~ three.cards);
 		}
 	}
 	return hands;
@@ -169,12 +216,46 @@ Hand[] genFourOfAKinds(){
 	return hands;
 }
 
-enum Deck = genFullDeck;
+Hand[] genStraightFlushes(){
+	Suit[] suits = mixin("["~ allSuits.map!(a => "Suit."~a).join(",") ~ "]");
 
+	Rank[] ranks = mixin("["~ allRanks.map!(a => "Rank."~a).join(",") ~ "]");
+	// straights are special, as Aces count for 1 and 13, so,
+	// add another Ace rank onto the end of ranks
+	ranks ~= Rank.Ace;
+	Rank[][] straightRanks;
+	for(int i=0; i < ranks.length-4; i++ ){
+		straightRanks ~= ranks[i..i+5];
+	}
+	Hand[] hands;
+	foreach(suit; suits){
+		foreach(straight; straightRanks){
+			hands ~= Hand(straight.map!(a => Card(suit, a)).array);
+		}
+	}
+	return hands;
+}
+
+Hand[] genRoyalFlushes(){
+	Hand[] hands;
+	Suit[] suits = mixin("["~ allSuits.map!(a => "Suit."~a).join(",") ~ "]");
+	foreach(suit; suits){
+		Card A = Card(suit, Rank.Ace);
+		Card K = Card(suit, Rank.King);
+		Card Q = Card(suit, Rank.Queen);
+		Card J = Card(suit, Rank.Jack);
+		Card T = Card(suit, Rank.Ten);
+		hands ~= Hand([A,K,Q,J,T]);
+	}
+	return hands;
+}
+
+enum Deck = genFullDeck;
+enum AllCombinationsOfCards = Deck.combinations(5);
 /+ Utils +/
 
-public const allSuits = [__traits(allMembers, Suit)];
-public const allRanks = [__traits(allMembers, Rank)];
+public const allSuits = [__traits(allMembers, Suit)].filter!(a => a!="DONT_CARE").array;
+public const allRanks = [__traits(allMembers, Rank)].filter!(a => a!="DONT_CARE").array;
 
 private Card[] genFullDeck(){
 	Card[] cards;
@@ -204,6 +285,7 @@ public string cardName(Card c){
 		case Four: n[0]='4'; break;
 		case Three: n[0]='3'; break;
 		case Two: n[0]='2'; break;
+		case DONT_CARE : n[0]='x'; break;
 	}
 
 	with(Suit)
@@ -212,6 +294,7 @@ public string cardName(Card c){
 		case Diamond: n[1]='d'; break;
 		case Heart: n[1]='h'; break;
 		case Spade: n[1]='s'; break;
+		case DONT_CARE: n[1]='X'; break;
 	}
 
 	return n.to!string;
